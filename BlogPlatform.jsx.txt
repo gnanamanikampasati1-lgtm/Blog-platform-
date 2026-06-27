@@ -1,0 +1,501 @@
+import { useState, useEffect } from "react";
+
+// ── Palette ──────────────────────────────────────────────────────────
+const C = {
+  bg: "#0F1117",
+  surface: "#1A1D27",
+  card: "#222536",
+  border: "#2E3148",
+  accent: "#6C63FF",
+  accentHover: "#8A84FF",
+  green: "#22C55E",
+  red: "#EF4444",
+  text: "#E8E9F3",
+  muted: "#8B8FA8",
+  tag: "#2A2D42",
+};
+
+// ── Tiny style helpers ────────────────────────────────────────────────
+const btn = (extra = "") => ({
+  padding: "9px 20px",
+  borderRadius: 8,
+  border: "none",
+  cursor: "pointer",
+  fontWeight: 600,
+  fontSize: 14,
+  transition: "all .18s",
+  ...parseExtra(extra),
+});
+function parseExtra(s) {
+  if (s === "primary") return { background: C.accent, color: "#fff" };
+  if (s === "ghost") return { background: "transparent", color: C.muted, border: `1px solid ${C.border}` };
+  if (s === "danger") return { background: C.red + "22", color: C.red, border: `1px solid ${C.red}44` };
+  if (s === "sm") return { padding: "6px 14px", fontSize: 12 };
+  return {};
+}
+
+const input = {
+  width: "100%",
+  background: C.surface,
+  border: `1px solid ${C.border}`,
+  borderRadius: 8,
+  padding: "10px 14px",
+  color: C.text,
+  fontSize: 14,
+  outline: "none",
+  boxSizing: "border-box",
+};
+
+// ── Seed data ─────────────────────────────────────────────────────────
+const SEED_POSTS = [
+  {
+    id: 1,
+    authorId: "demo",
+    author: "Alex Rivera",
+    avatar: "AR",
+    title: "Getting Started with React Hooks",
+    body: "React Hooks revolutionized the way we write components. useState and useEffect alone replace most class component patterns, keeping logic co-located and readable. In this post we explore the most useful hooks and common pitfalls to avoid when migrating from class-based components.",
+    tags: ["React", "JavaScript"],
+    createdAt: "2026-06-20T09:00:00Z",
+    comments: [
+      { id: 101, authorId: "demo2", author: "Sam Lee", avatar: "SL", body: "Great intro! The useEffect cleanup section really clicked for me.", createdAt: "2026-06-20T10:30:00Z" },
+    ],
+  },
+  {
+    id: 2,
+    authorId: "demo2",
+    author: "Sam Lee",
+    avatar: "SL",
+    title: "Why RESTful APIs Still Matter in 2026",
+    body: "Despite the rise of GraphQL and tRPC, REST remains the backbone of most public APIs. Its simplicity, cacheability, and broad tooling support make it the default choice for teams that need interoperability. This post covers best practices for versioning, error shapes, and pagination.",
+    tags: ["API", "Backend"],
+    createdAt: "2026-06-22T14:00:00Z",
+    comments: [],
+  },
+];
+
+// ── Main App ──────────────────────────────────────────────────────────
+export default function App() {
+  const [screen, setScreen] = useState("feed"); // feed | login | register | write | post
+  const [user, setUser] = useState(null);
+  const [users, setUsers] = useState([
+    { id: "demo", name: "Alex Rivera", avatar: "AR", email: "alex@demo.com", password: "demo123" },
+    { id: "demo2", name: "Sam Lee", avatar: "SL", email: "sam@demo.com", password: "demo123" },
+  ]);
+  const [posts, setPosts] = useState(SEED_POSTS);
+  const [activePost, setActivePost] = useState(null);
+  const [editPost, setEditPost] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [searchQ, setSearchQ] = useState("");
+
+  function showToast(msg, type = "ok") {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 2800);
+  }
+
+  // filtered feed
+  const feed = posts.filter(p =>
+    p.title.toLowerCase().includes(searchQ.toLowerCase()) ||
+    p.tags.some(t => t.toLowerCase().includes(searchQ.toLowerCase()))
+  );
+
+  function openPost(post) {
+    setActivePost(post);
+    setScreen("post");
+  }
+
+  function handleDelete(postId) {
+    setPosts(ps => ps.filter(p => p.id !== postId));
+    setScreen("feed");
+    showToast("Post deleted.");
+  }
+
+  function handleSavePost(post) {
+    if (editPost) {
+      setPosts(ps => ps.map(p => p.id === post.id ? post : p));
+      showToast("Post updated!");
+    } else {
+      setPosts(ps => [post, ...ps]);
+      showToast("Post published!");
+    }
+    setEditPost(null);
+    setScreen("feed");
+  }
+
+  function handleAddComment(postId, body) {
+    const initials = user.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+    const comment = {
+      id: Date.now(),
+      authorId: user.id,
+      author: user.name,
+      avatar: initials,
+      body,
+      createdAt: new Date().toISOString(),
+    };
+    setPosts(ps => ps.map(p => p.id === postId ? { ...p, comments: [...p.comments, comment] } : p));
+    setActivePost(prev => ({ ...prev, comments: [...prev.comments, comment] }));
+  }
+
+  function handleDeleteComment(postId, commentId) {
+    setPosts(ps => ps.map(p => p.id === postId
+      ? { ...p, comments: p.comments.filter(c => c.id !== commentId) }
+      : p));
+    setActivePost(prev => ({ ...prev, comments: prev.comments.filter(c => c.id !== commentId) }));
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <NavBar user={user} screen={screen} setScreen={s => { setEditPost(null); setScreen(s); }} onLogout={() => { setUser(null); setScreen("feed"); showToast("Logged out."); }} />
+
+      {toast && <Toast msg={toast.msg} type={toast.type} />}
+
+      <div style={{ maxWidth: 740, margin: "0 auto", padding: "24px 16px 60px" }}>
+        {screen === "feed" && (
+          <Feed
+            feed={feed}
+            searchQ={searchQ}
+            setSearchQ={setSearchQ}
+            user={user}
+            onOpen={openPost}
+            onWrite={() => { setEditPost(null); setScreen("write"); }}
+          />
+        )}
+        {screen === "post" && activePost && (
+          <PostView
+            post={posts.find(p => p.id === activePost.id) || activePost}
+            user={user}
+            onBack={() => setScreen("feed")}
+            onEdit={p => { setEditPost(p); setScreen("write"); }}
+            onDelete={handleDelete}
+            onAddComment={handleAddComment}
+            onDeleteComment={handleDeleteComment}
+          />
+        )}
+        {screen === "write" && (
+          <WritePost
+            user={user}
+            existing={editPost}
+            onSave={handleSavePost}
+            onCancel={() => setScreen(editPost ? "post" : "feed")}
+          />
+        )}
+        {screen === "login" && (
+          <AuthForm
+            mode="login"
+            users={users}
+            onSuccess={u => { setUser(u); setScreen("feed"); showToast(`Welcome back, ${u.name}!`); }}
+            onSwitch={() => setScreen("register")}
+          />
+        )}
+        {screen === "register" && (
+          <AuthForm
+            mode="register"
+            users={users}
+            onSuccess={(u, newUsers) => { setUsers(newUsers); setUser(u); setScreen("feed"); showToast(`Account created! Welcome, ${u.name}.`); }}
+            onSwitch={() => setScreen("login")}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── NavBar ────────────────────────────────────────────────────────────
+function NavBar({ user, screen, setScreen, onLogout }) {
+  return (
+    <nav style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 50 }}>
+      <div style={{ maxWidth: 740, margin: "0 auto", padding: "0 16px", display: "flex", alignItems: "center", height: 56, gap: 12 }}>
+        <button onClick={() => setScreen("feed")} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: -1, color: C.accent }}>✦</span>
+          <span style={{ fontSize: 17, fontWeight: 700, color: C.text }}>Inkwell</span>
+        </button>
+        <div style={{ flex: 1 }} />
+        {user ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <button onClick={() => setScreen("write")} style={{ ...btn("primary"), ...btn("sm") }}>+ Write</button>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>{user.avatar}</div>
+            <button onClick={onLogout} style={{ ...btn("ghost"), ...btn("sm") }}>Out</button>
+          </div>
+        ) : (
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setScreen("login")} style={{ ...btn("ghost"), ...btn("sm") }}>Log in</button>
+            <button onClick={() => setScreen("register")} style={{ ...btn("primary"), ...btn("sm") }}>Sign up</button>
+          </div>
+        )}
+      </div>
+    </nav>
+  );
+}
+
+// ── Feed ──────────────────────────────────────────────────────────────
+function Feed({ feed, searchQ, setSearchQ, user, onOpen, onWrite }) {
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 10, marginBottom: 24, alignItems: "center" }}>
+        <input
+          value={searchQ}
+          onChange={e => setSearchQ(e.target.value)}
+          placeholder="Search posts or tags…"
+          style={{ ...input, flex: 1 }}
+        />
+        {user && <button onClick={onWrite} style={btn("primary")}>+ New Post</button>}
+      </div>
+      {feed.length === 0 && (
+        <div style={{ textAlign: "center", color: C.muted, marginTop: 60 }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>📭</div>
+          <p>No posts yet. {user ? "Be the first to write one!" : "Log in to start writing."}</p>
+        </div>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {feed.map(post => <PostCard key={post.id} post={post} onClick={() => onOpen(post)} />)}
+      </div>
+    </div>
+  );
+}
+
+function PostCard({ post, onClick }) {
+  return (
+    <div
+      onClick={onClick}
+      style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "20px 22px", cursor: "pointer", transition: "border-color .18s" }}
+      onMouseEnter={e => e.currentTarget.style.borderColor = C.accent}
+      onMouseLeave={e => e.currentTarget.style.borderColor = C.border}
+    >
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12 }}>
+        <Avatar label={post.avatar} />
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>{post.author}</div>
+          <div style={{ color: C.muted, fontSize: 11 }}>{fmtDate(post.createdAt)}</div>
+        </div>
+      </div>
+      <h2 style={{ margin: "0 0 8px", fontSize: 17, fontWeight: 700, lineHeight: 1.35 }}>{post.title}</h2>
+      <p style={{ margin: "0 0 14px", color: C.muted, fontSize: 14, lineHeight: 1.6, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{post.body}</p>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        {post.tags.map(t => <Tag key={t} label={t} />)}
+        <span style={{ marginLeft: "auto", color: C.muted, fontSize: 12 }}>💬 {post.comments.length}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── PostView ──────────────────────────────────────────────────────────
+function PostView({ post, user, onBack, onEdit, onDelete, onAddComment, onDeleteComment }) {
+  const [commentText, setCommentText] = useState("");
+  const isAuthor = user && user.id === post.authorId;
+
+  function submitComment(e) {
+    e.preventDefault();
+    if (!commentText.trim()) return;
+    onAddComment(post.id, commentText.trim());
+    setCommentText("");
+  }
+
+  return (
+    <div>
+      <button onClick={onBack} style={{ ...btn("ghost"), ...btn("sm"), marginBottom: 20 }}>← Back</button>
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "28px 26px", marginBottom: 24 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <Avatar label={post.avatar} size={38} />
+            <div>
+              <div style={{ fontWeight: 600 }}>{post.author}</div>
+              <div style={{ color: C.muted, fontSize: 12 }}>{fmtDate(post.createdAt)}</div>
+            </div>
+          </div>
+          {isAuthor && (
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => onEdit(post)} style={{ ...btn("ghost"), ...btn("sm") }}>Edit</button>
+              <button onClick={() => onDelete(post.id)} style={{ ...btn("danger"), ...btn("sm") }}>Delete</button>
+            </div>
+          )}
+        </div>
+        <h1 style={{ margin: "0 0 14px", fontSize: 22, fontWeight: 800, lineHeight: 1.3 }}>{post.title}</h1>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 18 }}>
+          {post.tags.map(t => <Tag key={t} label={t} />)}
+        </div>
+        <p style={{ margin: 0, fontSize: 15, lineHeight: 1.75, color: "#CBD0E8" }}>{post.body}</p>
+      </div>
+
+      {/* Comments */}
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "22px 24px" }}>
+        <h3 style={{ margin: "0 0 18px", fontSize: 15, fontWeight: 700 }}>💬 Comments ({post.comments.length})</h3>
+
+        {post.comments.length === 0 && <p style={{ color: C.muted, fontSize: 14, marginBottom: 20 }}>No comments yet. Be the first!</p>}
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
+          {post.comments.map(c => (
+            <div key={c.id} style={{ background: C.surface, borderRadius: 10, padding: "14px 16px", display: "flex", gap: 12 }}>
+              <Avatar label={c.avatar} size={30} />
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <div>
+                    <span style={{ fontWeight: 600, fontSize: 13 }}>{c.author}</span>
+                    <span style={{ color: C.muted, fontSize: 11, marginLeft: 8 }}>{fmtDate(c.createdAt)}</span>
+                  </div>
+                  {user && user.id === c.authorId && (
+                    <button onClick={() => onDeleteComment(post.id, c.id)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 12 }}>✕</button>
+                  )}
+                </div>
+                <p style={{ margin: 0, fontSize: 14, color: "#CBD0E8", lineHeight: 1.6 }}>{c.body}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {user ? (
+          <div>
+            <textarea
+              value={commentText}
+              onChange={e => setCommentText(e.target.value)}
+              placeholder="Add a comment…"
+              rows={3}
+              style={{ ...input, resize: "vertical", marginBottom: 10 }}
+            />
+            <button onClick={submitComment} style={btn("primary")} disabled={!commentText.trim()}>Post Comment</button>
+          </div>
+        ) : (
+          <p style={{ color: C.muted, fontSize: 13 }}>Log in to leave a comment.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── WritePost ─────────────────────────────────────────────────────────
+function WritePost({ user, existing, onSave, onCancel }) {
+  const [title, setTitle] = useState(existing?.title || "");
+  const [body, setBody] = useState(existing?.body || "");
+  const [tags, setTags] = useState((existing?.tags || []).join(", "));
+  const [err, setErr] = useState("");
+
+  if (!user) return <p style={{ color: C.muted }}>Please log in to write posts.</p>;
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!title.trim()) { setErr("Title is required."); return; }
+    if (!body.trim()) { setErr("Body is required."); return; }
+    const tagList = tags.split(",").map(t => t.trim()).filter(Boolean);
+    const initials = user.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+    const post = {
+      id: existing?.id || Date.now(),
+      authorId: user.id,
+      author: user.name,
+      avatar: initials,
+      title: title.trim(),
+      body: body.trim(),
+      tags: tagList,
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      comments: existing?.comments || [],
+    };
+    onSave(post);
+  }
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "28px 26px" }}>
+      <h2 style={{ margin: "0 0 24px", fontSize: 18, fontWeight: 800 }}>{existing ? "Edit Post" : "New Post"}</h2>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <label style={{ fontSize: 13, fontWeight: 600, color: C.muted }}>Title *
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Your post title" style={{ ...input, marginTop: 6 }} />
+        </label>
+        <label style={{ fontSize: 13, fontWeight: 600, color: C.muted }}>Body *
+          <textarea value={body} onChange={e => setBody(e.target.value)} placeholder="Write your post content…" rows={8} style={{ ...input, marginTop: 6, resize: "vertical" }} />
+        </label>
+        <label style={{ fontSize: 13, fontWeight: 600, color: C.muted }}>Tags (comma-separated)
+          <input value={tags} onChange={e => setTags(e.target.value)} placeholder="React, JavaScript, Tips" style={{ ...input, marginTop: 6 }} />
+        </label>
+        {err && <p style={{ color: C.red, fontSize: 13, margin: 0 }}>{err}</p>}
+        <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+          <button onClick={handleSubmit} style={btn("primary")}>{existing ? "Save Changes" : "Publish"}</button>
+          <button onClick={onCancel} style={btn("ghost")}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── AuthForm ──────────────────────────────────────────────────────────
+function AuthForm({ mode, users, onSuccess, onSwitch }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [err, setErr] = useState("");
+
+  function handle(e) {
+    e.preventDefault();
+    setErr("");
+    if (mode === "login") {
+      const found = users.find(u => u.email === email && u.password === password);
+      if (!found) { setErr("Incorrect email or password."); return; }
+      onSuccess(found);
+    } else {
+      if (!name.trim()) { setErr("Name is required."); return; }
+      if (!email.includes("@")) { setErr("Enter a valid email."); return; }
+      if (password.length < 6) { setErr("Password must be at least 6 characters."); return; }
+      if (users.find(u => u.email === email)) { setErr("Email already registered."); return; }
+      const initials = name.trim().split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+      const newUser = { id: Date.now().toString(), name: name.trim(), avatar: initials, email, password };
+      onSuccess(newUser, [...users, newUser]);
+    }
+  }
+
+  return (
+    <div style={{ maxWidth: 400, margin: "40px auto" }}>
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "32px 28px" }}>
+        <h2 style={{ margin: "0 0 22px", fontSize: 20, fontWeight: 800 }}>{mode === "login" ? "Welcome back" : "Create account"}</h2>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {mode === "register" && (
+            <label style={{ fontSize: 13, fontWeight: 600, color: C.muted }}>Full Name
+              <input value={name} onChange={e => setName(e.target.value)} placeholder="Jane Doe" style={{ ...input, marginTop: 5 }} />
+            </label>
+          )}
+          <label style={{ fontSize: 13, fontWeight: 600, color: C.muted }}>Email
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" style={{ ...input, marginTop: 5 }} />
+          </label>
+          <label style={{ fontSize: 13, fontWeight: 600, color: C.muted }}>Password
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder={mode === "register" ? "Min 6 characters" : "••••••••"} style={{ ...input, marginTop: 5 }} />
+          </label>
+          {err && <p style={{ color: C.red, fontSize: 13, margin: 0 }}>{err}</p>}
+          <button onClick={handle} style={{ ...btn("primary"), marginTop: 4 }}>{mode === "login" ? "Log in" : "Create account"}</button>
+        </div>
+        <p style={{ marginTop: 18, fontSize: 13, color: C.muted, textAlign: "center" }}>
+          {mode === "login" ? "Don't have an account? " : "Already have an account? "}
+          <button onClick={onSwitch} style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontWeight: 600, fontSize: 13 }}>
+            {mode === "login" ? "Sign up" : "Log in"}
+          </button>
+        </p>
+        {mode === "login" && (
+          <p style={{ marginTop: 8, fontSize: 11, color: C.muted, textAlign: "center" }}>Demo: alex@demo.com / demo123</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Shared components ─────────────────────────────────────────────────
+function Avatar({ label, size = 34 }) {
+  const colors = ["#6C63FF", "#22C55E", "#F59E0B", "#EF4444", "#06B6D4"];
+  const color = colors[label.charCodeAt(0) % colors.length];
+  return (
+    <div style={{ width: size, height: size, minWidth: size, borderRadius: "50%", background: color, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.36, fontWeight: 700 }}>
+      {label}
+    </div>
+  );
+}
+
+function Tag({ label }) {
+  return (
+    <span style={{ background: C.tag, color: C.muted, padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600 }}>{label}</span>
+  );
+}
+
+function Toast({ msg, type }) {
+  return (
+    <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: type === "ok" ? C.green : C.red, color: "#fff", padding: "10px 20px", borderRadius: 30, fontSize: 13, fontWeight: 600, zIndex: 999, boxShadow: "0 4px 20px #0008", whiteSpace: "nowrap" }}>
+      {msg}
+    </div>
+  );
+}
+
+function fmtDate(iso) {
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
